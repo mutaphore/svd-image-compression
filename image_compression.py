@@ -1,31 +1,35 @@
 # Image compression using SVD
+#
 # Author: Dewei Chen
 # 12/12/15
-# This program has dependency on: 
+#
+# This program has following dependencies:
 # skimage, matplotlib, scipy, numpy and PIL
 
 import argparse
-
 import numpy as np
-
 import matplotlib.pyplot as plt
-import matplotlib.image as mpimg
-import matplotlib.cm as cm
-
 from scipy import misc
 from scipy import linalg
-
 from PIL import Image
-
-from skimage import img_as_float
+from skimage import io, img_as_float, img_as_uint
 from skimage.measure import structural_similarity as ssim
 
+def svd_compress_ssim(img, ssim):
+	"""Compress image by finding k that is closest to ssim"""
+	U, singular_vals, V = linalg.svd(img)
+	rank = len(singular_vals)
+	if k > rank:
+		print "k is larger than rank of image %r" % rank
+		return img
+	pass
 
 def svd_compress_gs(img, k):
 	"""Given a matrix representing a grayscale image, compress 
 	it by taking the largest k elements from its singular values"""
 	U, singular_vals, V = linalg.svd(img)
 	rank = len(singular_vals)
+	print "Image rank %r" % rank
 	if k > rank:
 		print "k is larger than rank of image %r" % rank
 		return img
@@ -34,7 +38,7 @@ def svd_compress_gs(img, k):
 	# take rows less than k from V
 	V_p = V[:k,:]
 	# build the new S matrix with top k diagnal elements
-	S_p = np.zeros((k, k))
+	S_p = np.zeros((k, k), img.dtype)
 	for i in range(k):
 		S_p[i][i] = singular_vals[i]
 	print "U_p shape {0}, S_p shape {1}, V_p shape {2}".format(
@@ -52,7 +56,7 @@ def svd_compress_rgb(img, k_r, k_g, k_b):
 	comp_r = svd_compress_gs(img[:,:,0], k_r)
 	comp_g = svd_compress_gs(img[:,:,1], k_g)
 	comp_b = svd_compress_gs(img[:,:,2], k_b)
-	new_img = np.zeros(img.shape, 'float64')
+	new_img = np.zeros(img.shape, img.dtype)
 	nrows = img.shape[0]
 	ncols = img.shape[1]
 	nchans = img.shape[2]
@@ -66,23 +70,44 @@ def svd_compress_rgb(img, k_r, k_g, k_b):
 					val = comp_g[i][j]
 				else:
 					val = comp_b[i][j]
+				# float64 values must be between -1.0 and 1.0
+				if val < -1.0:
+					val = -1.0
+				elif val > 1.0:
+					val = 1.0
 				new_img[i][j][c] = val
 	return new_img
 
 def compress_ratio(orig_img, k):
 	"""Calculate the compression ratio of an compressed image
 	to the original image."""
-	m = orig_img.shape[0]
-	n = orig_img.shape[1]
+	m = float(orig_img.shape[0])
+	n = float(orig_img.shape[1])
 	comp_bytes = 0
 	if len(orig_img.shape) > 2:
 		comp_bytes += k[0] * (m + n + 1)
 		comp_bytes += k[1] * (m + n + 1)
 		comp_bytes += k[2] * (m + n + 1)
-		return comp_bytes / (3 * float(m**2))
+		return comp_bytes / (3 * m * n)
 	else:
 		comp_bytes = k[0] * (m + n + 1)
-		return comp_bytes / float(m**2)
+		return comp_bytes / (m * n)
+
+def compress_images(in_dir, out_dir, num_imgs, img_format, k_values):
+	"""Compress images with different k values. Compressed format is png."""
+	for i in range(1, num_imgs+1):
+		img = io.imread("{0}/{1}.{2}".format(in_dir, i, img_format))
+		img = img_as_float(img)
+		for k in k_values:
+			filename = "{0}/{1}/{2}.png".format(out_dir, i, k) 
+			print filename
+			# check if this is an RGB or grayscale image
+			compressed = None
+			if len(img.shape) > 2:
+				compressed = svd_compress_rgb(img, k, k, k)
+			else:
+				compressed = svd_compress_gs(img, k)
+			io.imsave(filename, compressed)
 
 def main():
 	parser = argparse.ArgumentParser(description='Image compression with SVD')
@@ -94,26 +119,28 @@ def main():
 	args.k = [int(x) for x in args.k]
 
 	if args.ssim:
-		img1 = img_as_float(mpimg.imread(args.ssim[0]))
-		img2 = img_as_float(mpimg.imread(args.ssim[1]))
+		img1 = img_as_float(io.imread(args.ssim[0]))
+		img2 = img_as_float(io.imread(args.ssim[1]))
 		ss = ssim(img1, img2)
 		print "Strucural similarity: %r" % ss
 	elif args.compress:
-		img = mpimg.imread(args.compress)
+		img = io.imread(args.compress)
 		print "Original image dimensions {0}".format(img.shape)
 		if args.size < 100:
 			img = misc.imresize(img, args.size)
 		img = img_as_float(img)
 		# check if this is an RGB or grayscale image
 		if len(img.shape) > 2:
-			if 
+			if len(args.k) != img.shape[2]:
+				print "Provide correct number of k values (%r)" % img.shape[2]
+				return 
 			compressed = svd_compress_rgb(img, args.k[0], args.k[1], args.k[2])
 		else:
 			compressed = svd_compress_gs(img, args.k[0])
 		print "Compression ratio: %r" % compress_ratio(img, args.k)
-		plt.figure(figsize=(10, 3.6))
-		plt.imshow(compressed, cmap=plt.cm.gray)
-		plt.show()
+		io.imshow(compressed)
+		io.show()
+		io.imsave("testing.png", compressed)
 	elif args.size < 100:
 		print "Resizing image to {0}%".format(args.r)
 		img = misc.imresize(img, args.size)
@@ -125,3 +152,5 @@ def main():
 
 if __name__ == '__main__':
 	main()
+	# compress_images("../gs", "../gsdiffk", 10, "pgm", [1, 3, 5, 10, 15, 20])
+	# compress_images("../rgb", "../rgbdiffk", 10, "jpg", [5, 15, 25, 35, 45])
