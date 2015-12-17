@@ -204,7 +204,7 @@ def main():
 			compressed = svd_compress_gs(img, args.k[0])
 		print "Compression ratio: %r" % compress_ratio(img, args.k)
 		if args.fname:
-			io.imsave(args.file, compressed)
+			io.imsave(args.fname, compressed)
 		io.imshow(compressed)
 		io.show()
 	elif args.size < 100:
