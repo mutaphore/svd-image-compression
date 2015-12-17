@@ -1,7 +1,7 @@
 # Image compression using SVD
 #
 # Author: Dewei Chen
-# 12/12/15
+# Date: 12/12/15
 #
 # This program has following dependencies:
 # skimage, matplotlib, scipy, numpy and PIL
